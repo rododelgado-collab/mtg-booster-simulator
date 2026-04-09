@@ -3,22 +3,71 @@ import { EDITIONS } from './data/editions';
 import { Card } from './components/Card';
 import './index.css';
 
-function App() {
-  // --- ESTADOS DEL JUEGO (ECONOMÍA Y PERFIL) ---
-  const [credits, setCredits] = useState(100.00); // Empezamos con $100 dólares
-  const PACK_COST = 15.00; // Precio por sobre
-  const [packValue, setPackValue] = useState(0); // Valor de las cartas que salieron
-  const [packClaimed, setPackClaimed] = useState(false); // Para no cobrar el mismo sobre dos veces
+// --- SINTETIZADOR DE EFECTOS DE SONIDO ---
+const playSound = (type, step = 0) => {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gainNode = ctx.createGain();
 
-  // --- ESTADOS DE LA APP ---
+    osc.connect(gainNode);
+    gainNode.connect(ctx.destination);
+
+    if (type === 'tick') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(300 + (step * 40), ctx.currentTime);
+      gainNode.gain.setValueAtTime(0.1, ctx.currentTime); 
+      gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1); 
+      osc.start();
+      osc.stop(ctx.currentTime + 0.1);
+    } else if (type === 'epic') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(440, ctx.currentTime); 
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.5); 
+      gainNode.gain.setValueAtTime(0.2, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.5); 
+      osc.start();
+      osc.stop(ctx.currentTime + 1.5);
+    }
+  } catch (e) {
+    console.log("El navegador bloqueó el audio", e);
+  }
+};
+
+function App() {
+  // --- ESTADOS DEL JUEGO ---
+  const [credits, setCredits] = useState(100.00); 
+  const PACK_COST = 15.00; 
+  const [packValue, setPackValue] = useState(0); 
+  const [packClaimed, setPackClaimed] = useState(false); 
+
   const [selectedEd, setSelectedEd] = useState(null);
   const [cards, setCards] = useState([]);
   const [loading, setLoading] = useState(false);
-  const cardsSectionRef = useRef(null);
+  const [isRevealing, setIsRevealing] = useState(false); 
 
-  // Deslizamiento suave
+  const [highlightedCardId, setHighlightedCardId] = useState(null); 
+  const [mostExpensiveCardId, setMostExpensiveCardId] = useState(null); 
+
+  // --- REFERENCIAS PARA MOVER LA PANTALLA ---
+  const cardsSectionRef = useRef(null);
+  const carouselRef = useRef(null); 
+  const buySectionRef = useRef(null); 
+
+  // Deslizamiento hacia el botón al seleccionar un sobre
   useEffect(() => {
-    if (cards.length > 0 && cardsSectionRef.current) {
+    if (selectedEd && buySectionRef.current && cards.length === 0) {
+      setTimeout(() => {
+        buySectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+    }
+  }, [selectedEd, cards.length]);
+
+  // Deslizamiento hacia abajo SOLO cuando aparece la primera carta
+  useEffect(() => {
+    if (cards.length === 1 && cardsSectionRef.current) {
       setTimeout(() => {
         cardsSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 150);
@@ -26,20 +75,28 @@ function App() {
   }, [cards]);
 
   const openBooster = async () => {
-    if (!selectedEd) return;
+    if (!selectedEd || isRevealing) return;
+
+    // --- NUEVO: CANDADO DE SEGURIDAD AL BOTÓN DE COMPRA ---
+    if (cards.length > 0 && !packClaimed) {
+      alert("⚠️ ¡Aún tienes cartas en la mesa! Vende o reclama el sobre actual antes de comprar uno nuevo.");
+      // Opcional: Hacer scroll hacia abajo para que vea los botones
+      cardsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
     
-    // Validar si hay dinero suficiente
     if (credits < PACK_COST) {
       alert("¡No tienes suficientes créditos! Vende las cartas de tus sobres anteriores para continuar.");
       return;
     }
 
-    // Cobrar el sobre y resetear estados
     setCredits(prev => prev - PACK_COST);
     setLoading(true);
     setCards([]);
     setPackClaimed(false);
     setPackValue(0);
+    setHighlightedCardId(null); 
+    setMostExpensiveCardId(null);
 
     const queries = [
       { q: `s:${selectedEd.id} t:basic`, n: 1 },
@@ -49,53 +106,93 @@ function App() {
     ];
 
     try {
-      let pack = [];
+      let fullPack = [];
       for (const query of queries) {
         const res = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(query.q)}&order=random`);
         const data = await res.json();
         if (data.data) {
           const selection = data.data.slice(0, query.n);
-          pack = [...pack, ...selection];
+          fullPack = [...fullPack, ...selection];
         }
       }
-      setCards(pack);
 
-      // Calcular el valor total del sobre en dólares
-      const totalUsd = pack.reduce((acc, card) => {
-        const price = parseFloat(card.prices?.usd || 0);
-        return acc + price;
-      }, 0);
-      setPackValue(totalUsd);
+      setLoading(false);
+      setIsRevealing(true); 
+
+      let currentRevealed = [];
+      let runningValue = 0;
+
+      fullPack.forEach((card, i) => {
+        setTimeout(() => {
+          currentRevealed = [...currentRevealed, card];
+          setCards(currentRevealed);
+          setHighlightedCardId(card.id);
+
+          playSound('tick', i);
+
+          const price = parseFloat(card.prices?.usd || 0);
+          runningValue += price;
+          setPackValue(runningValue);
+
+          setTimeout(() => {
+            if (carouselRef.current) {
+              carouselRef.current.scrollTo({
+                left: carouselRef.current.scrollWidth + 500, 
+                behavior: 'smooth'
+              });
+            }
+          }, 50);
+
+          if (i === fullPack.length - 1) {
+            setHighlightedCardId(null);
+
+            let maxPrice = -1;
+            let expensiveId = null;
+            fullPack.forEach(c => {
+              const priceNum = parseFloat(c.prices?.usd || 0);
+              if (priceNum > maxPrice) {
+                maxPrice = priceNum;
+                expensiveId = c.id;
+              }
+            });
+            
+            setMostExpensiveCardId(expensiveId);
+            setIsRevealing(false);
+            
+            setTimeout(() => {
+              playSound('epic');
+            }, 200); 
+          }
+        }, i * 450); 
+      });
 
     } catch (err) {
       console.error(err);
       alert("Error al invocar las cartas...");
-      // Si hay error, le devolvemos el dinero al usuario
       setCredits(prev => prev + PACK_COST);
-    } finally {
       setLoading(false);
     }
   };
 
-  // Funciones de decisión
   const handleSellPack = () => {
     setCredits(prev => prev + packValue);
     setPackClaimed(true);
+    setMostExpensiveCardId(null); 
   };
 
   const handleClaimPhysical = () => {
     alert("¡Pedido procesado! Las cartas están siendo preparadas para su envío a tu domicilio. 🚚📦");
     setPackClaimed(true);
+    setMostExpensiveCardId(null); 
   };
 
   return (
     <div className="min-h-screen bg-slate-950 text-white font-sans overflow-x-hidden">
       
-      {/* 1. BARRA DE NAVEGACIÓN / PERFIL */}
-      <nav className="bg-gray-900 border-b border-gray-800 p-4 sticky top-0 z-50 flex justify-between items-center shadow-lg">
+      <nav className="fixed top-0 left-0 w-full z-50 bg-gray-900 border-b border-gray-800 p-4 flex justify-between items-center shadow-lg">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-linear-to-tr from-purple-600 to-blue-500 rounded-full flex items-center justify-center font-bold border-2 border-white/20">
-            PW {/* Planeswalker */}
+            PW
           </div>
           <div className="hidden sm:block">
             <p className="text-sm text-gray-400 leading-none">Iniciado como</p>
@@ -111,19 +208,30 @@ function App() {
         </div>
       </nav>
 
-      <header className="py-10">
+      <header className="pt-32 pb-10">
         <h1 className="text-center text-4xl font-black mb-10 tracking-widest text-transparent bg-clip-text bg-linear-to-r from-yellow-400 to-red-600">
           MERCADO DE EDICIONES
         </h1>
         
-        {/* 2. CARRUSEL DE EDICIONES */}
         <div className="flex overflow-x-auto gap-8 px-10 pb-6 snap-x">
           {EDITIONS.map((ed) => (
             <div 
               key={ed.id}
               onClick={() => {
+                if (isRevealing || loading) return;
+
+                // --- NUEVO: CANDADO DE SEGURIDAD AL CAMBIAR DE EDICIÓN ---
+                if (cards.length > 0 && !packClaimed) {
+                  alert("⚠️ ¡Aún tienes cartas sin procesar! Por favor, elige 'Vender' o 'Reclamar' en tu sobre abierto antes de cambiar de edición.");
+                  // Hacemos que la pantalla baje hacia donde están los botones
+                  cardsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  return;
+                }
+
                 setSelectedEd(ed);
-                setCards([]); // Limpiamos cartas al cambiar de edición
+                // Solo vaciamos las cartas si ya procesó las anteriores o no había cartas
+                setCards([]);
+                setMostExpensiveCardId(null);
               }}
               className={`flex-none w-56 snap-center cursor-pointer transition-all duration-300 transform
                 ${selectedEd?.id === ed.id ? 'scale-110 opacity-100 ring-4 ring-yellow-500 rounded-lg' : 'opacity-50 grayscale hover:grayscale-0'}
@@ -136,67 +244,77 @@ function App() {
         </div>
       </header>
 
-      {/* 3. BOTÓN ABRIR SOBRE (CON PRECIO) */}
-      <div className="flex justify-center mb-12 h-20">
+{/* BOTÓN DE COMPRA CON REFERENCIA Y MEJORAS PARA MÓVILES */}
+      <div ref={buySectionRef} className="flex justify-center mb-12 min-h-20 px-5">
         {selectedEd && (
           <button 
             onClick={openBooster}
-            disabled={loading}
-            className={`font-black px-12 py-4 rounded-full text-2xl transition-all shadow-2xl disabled:bg-gray-800 disabled:text-gray-500 disabled:scale-100
-              ${cards.length > 0 
-                ? 'bg-gray-800 text-green-400 border border-green-500' // Estado: Abierto
-                : credits < PACK_COST 
-                  ? 'bg-red-600 text-white opacity-50 cursor-not-allowed' // Estado: Sin dinero
-                  : 'bg-white text-black hover:bg-yellow-400 active:scale-90' // Estado: Normal
+            disabled={loading || isRevealing}
+            className={`font-black w-full sm:w-auto max-w-md sm:max-w-none px-4 sm:px-12 py-4 rounded-full text-base sm:text-2xl transition-all shadow-2xl disabled:scale-100 flex items-center justify-center text-center leading-tight
+              ${(cards.length > 0 && !packClaimed) && !isRevealing
+                ? 'bg-gray-800 text-green-400 border border-green-500 hover:bg-gray-700' 
+                : isRevealing
+                  ? 'bg-yellow-600 text-white cursor-wait opacity-80'
+                  : credits < PACK_COST 
+                    ? 'bg-red-600 text-white opacity-50 cursor-not-allowed' 
+                    : 'bg-white text-black hover:bg-yellow-400 active:scale-90' 
               }
             `}
           >
             {loading 
               ? "PROCESANDO PAGO..." 
-              : cards.length > 0 
-                ? `¡SOBRE DE ${selectedEd.name} ABIERTO!`
-                : `COMPRAR SOBRE (-$${PACK_COST.toFixed(2)})`
+              : isRevealing
+                ? "ABRIENDO SOBRE..."
+                : (cards.length > 0 && !packClaimed)
+                  ? `¡SOBRE DE ${selectedEd.name} ABIERTO!`
+                  : `COMPRAR SOBRE (-$${PACK_COST.toFixed(2)})`
             }
           </button>
         )}
       </div>
 
-      {/* 4. CARRUSEL DE CARTAS Y TOMA DE DECISIONES */}
-      <main ref={cardsSectionRef} className="bg-black/40 backdrop-blur-md py-12 border-t border-white/10 min-h-125 flex flex-col justify-center">
+      <main ref={cardsSectionRef} className="scroll-mt-32 bg-black/40 backdrop-blur-md py-12 border-t border-white/10 min-h-125 flex flex-col justify-center">
         {cards.length > 0 ? (
           <>
-            {/* Las cartas */}
-            <div className="flex overflow-x-auto gap-4 px-10 pb-6 snap-x">
+            <div ref={carouselRef} className="flex overflow-x-auto gap-4 px-10 pb-6 snap-x scroll-smooth">
               {cards.map((card, i) => (
-                <Card key={`${card.id}-${i}`} card={card} />
+                <Card 
+                  key={`${card.id}-${i}`} 
+                  card={card} 
+                  isHighlighted={card.id === highlightedCardId}
+                  isMostExpensive={card.id === mostExpensiveCardId}
+                />
               ))}
             </div>
 
-            {/* Menú de decisiones */}
             <div className="mt-8 px-10 flex flex-col items-center">
               <h3 className="text-xl text-gray-300 mb-6 font-mono border-b border-gray-700 pb-2">
                 Valor estimado del sobre: <span className="text-green-400 font-bold">${packValue.toFixed(2)}</span>
               </h3>
               
-              {!packClaimed ? (
+              {isRevealing ? (
+                <div className="bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 px-8 py-3 rounded-full font-bold animate-pulse tracking-widest uppercase shadow-[0_0_15px_rgba(234,179,8,0.2)]">
+                  ✨ Revelando Misticismo... ✨
+                </div>
+              ) : !packClaimed ? (
                 <div className="flex flex-wrap justify-center gap-4">
                   <button 
                     onClick={handleSellPack}
-                    className="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-8 rounded-lg transition-all flex items-center gap-2 active:scale-95"
+                    className="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-8 rounded-lg transition-all flex items-center gap-2 active:scale-95 shadow-lg shadow-green-900/50"
                   >
                     <span>💸</span> Vender Cartas (+${packValue.toFixed(2)})
                   </button>
                   <button 
                     onClick={handleClaimPhysical}
-                    className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-lg transition-all flex items-center gap-2 active:scale-95"
+                    className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-lg transition-all flex items-center gap-2 active:scale-95 shadow-lg shadow-blue-900/50"
                   >
                     <span>📦</span> Reclamar Físicas (Envío)
                   </button>
                 </div>
               ) : (
-                <div className="bg-gray-800/50 border border-gray-600 rounded-lg px-8 py-4 text-center">
-                  <p className="text-gray-400 font-bold tracking-widest uppercase">Has procesado este sobre</p>
-                  <p className="text-sm text-gray-500 mt-1">Selecciona una edición arriba para comprar uno nuevo.</p>
+                <div className="bg-gray-800/50 border border-gray-600 rounded-lg px-8 py-4 text-center mt-4">
+                  <p className="text-gray-400 font-bold tracking-widest uppercase">¡Sobre procesado exitosamente!</p>
+                  <p className="text-sm text-gray-500 mt-1">Ya puedes comprar uno nuevo en el botón de arriba.</p>
                 </div>
               )}
             </div>
