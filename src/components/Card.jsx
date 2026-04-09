@@ -1,10 +1,13 @@
 import React from 'react';
-// eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
+// Importa tu hook (ajusta la ruta según la estructura de tus carpetas)
+import useAudio from '../hooks/useAudio'; 
 
-// Recibimos el "index" que nos mandó el carrusel
 export const Card = ({ card, isHighlighted, isMostExpensive, index = 0 }) => {
   const price = parseFloat(card.prices?.usd || 0).toFixed(2);
+  
+  // Extraemos la función para reproducir del hook
+  const { playSound } = useAudio(); 
 
   const cardVariants = {
     hidden: { 
@@ -25,7 +28,6 @@ export const Card = ({ card, isHighlighted, isMostExpensive, index = 0 }) => {
         stiffness: 70,      
         damping: 15,         
         duration: 0.8,
-        // ¡NUEVO! Retraso escalonado: 0.02 segundos por cada posición
         delay: index * 0.02  
       }
     }
@@ -36,7 +38,12 @@ export const Card = ({ card, isHighlighted, isMostExpensive, index = 0 }) => {
       className="flex-none w-48 snap-center cursor-pointer"
       variants={cardVariants}   
       initial="hidden"         
-      animate="visible"        
+      animate="visible"
+      // ¡AQUÍ ESTÁ LA MAGIA!
+      // Esto llamará al sonido exactamente cuando el delay de 0.02 * index haya terminado
+      onAnimationStart={() => {
+        playSound(); 
+      }}
       whileHover={{ 
         scale: 1.05, 
         y: -10,
