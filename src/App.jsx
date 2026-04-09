@@ -41,10 +41,10 @@ function App() {
   const PACK_COST = 15.00; 
   const [packValue, setPackValue] = useState(0); 
   
-  // --- NUEVOS ESTADOS DE PROCESAMIENTO ---
   const [packClaimed, setPackClaimed] = useState(false); 
-  const [claimMode, setClaimMode] = useState(null); // 'sold' (vendido) o 'physical' (físico)
-  const [showShippingPrompt, setShowShippingPrompt] = useState(false); // Mostrar pregunta de envío
+  const [claimMode, setClaimMode] = useState(null); 
+  const [showShippingPrompt, setShowShippingPrompt] = useState(false); 
+  const [outOfStockCard, setOutOfStockCard] = useState(null); // NUEVO: Guarda la carta agotada
 
   const [selectedEd, setSelectedEd] = useState(null);
   const [cards, setCards] = useState([]);
@@ -60,7 +60,6 @@ function App() {
   const storeSectionRef = useRef(null); 
   const alertRef = useRef(null); 
 
-  // Bajar a las cartas al abrir el sobre
   useEffect(() => {
     if (cards.length === 1 && cardsSectionRef.current) {
       setTimeout(() => {
@@ -69,7 +68,6 @@ function App() {
     }
   }, [cards]);
 
-  // Bajar a la alerta final cuando se procesa algo
   useEffect(() => {
     if (packClaimed && alertRef.current) {
       setTimeout(() => {
@@ -78,7 +76,6 @@ function App() {
     }
   }, [packClaimed]);
 
-  // Bajar a la pregunta de envío cuando se solicita
   useEffect(() => {
     if (showShippingPrompt && alertRef.current) {
       setTimeout(() => {
@@ -87,7 +84,6 @@ function App() {
     }
   }, [showShippingPrompt]);
 
-  // Función para volver a la tienda automáticamente
   const scrollToStore = () => {
     setTimeout(() => {
       storeSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -98,9 +94,10 @@ function App() {
         setPackClaimed(false);
         setClaimMode(null);
         setShowShippingPrompt(false);
+        setOutOfStockCard(null); // Limpiamos la carta agotada
       }, 500); 
       
-    }, 3000); 
+    }, 4000); // Subimos el tiempo a 4 segundos para que lean bien si hubo falta de stock
   };
 
   const openBooster = async () => {
@@ -122,6 +119,7 @@ function App() {
     setPackClaimed(false);
     setClaimMode(null);
     setShowShippingPrompt(false);
+    setOutOfStockCard(null);
     setPackValue(0);
     setHighlightedCardId(null); 
     setMostExpensiveCardId(null);
@@ -201,19 +199,34 @@ function App() {
   };
 
   const handleClaimPhysical = () => {
-    // En lugar de procesar directo, mostramos la pregunta
     setShowShippingPrompt(true);
   };
 
   const confirmShipping = (type) => {
     if (type === 'new') {
       const address = window.prompt("Por favor, ingresa la nueva dirección de envío:");
-      if (!address) return; // Si cancela, no hacemos nada
+      if (!address) return; 
     }
     
-    // Si elige guardada o ingresa una nueva, procedemos
+    // --- NUEVO: MECÁNICA DE FALTA DE STOCK ---
+    // Genera un número del 0 al 1. Si es menor a 0.30, hay un 30% de probabilidad de fallo.
+    // Si quieres que pase más seguido, sube el 0.30 (ej. 0.80 para probarlo rápido).
+    const hayFaltaDeStock = Math.random() < 0.30;
+
+    if (hayFaltaDeStock && cards.length > 0) {
+      // Elegimos una carta al azar del sobre
+      const indiceAleatorio = Math.floor(Math.random() * cards.length);
+      const cartaAgotada = cards[indiceAleatorio];
+      const valorCarta = parseFloat(cartaAgotada.prices?.usd || 0);
+
+      setOutOfStockCard(cartaAgotada); // Guardamos qué carta fue
+      setCredits(prev => prev + valorCarta); // Te sumamos los créditos obligatoriamente
+      setClaimMode('partial'); // Nuevo modo de alerta (Naranja)
+    } else {
+      setClaimMode('physical'); // Envío normal (Azul)
+    }
+
     setShowShippingPrompt(false);
-    setClaimMode('physical');
     setPackClaimed(true);
     setMostExpensiveCardId(null); 
     scrollToStore(); 
@@ -316,7 +329,6 @@ function App() {
                   ✨ Revelando Misticismo... ✨
                 </div>
               ) : showShippingPrompt ? (
-                /* --- NUEVO: UI DE PREGUNTA DE DIRECCIÓN --- */
                 <div className="bg-blue-900/40 border-2 border-blue-500/50 rounded-xl px-8 py-6 text-center shadow-[0_0_20px_rgba(59,130,246,0.3)] w-full max-w-lg animate-fade-in">
                   <div className="text-4xl mb-3">🚚</div>
                   <h4 className="text-2xl font-black text-blue-400 mb-2 tracking-wide uppercase">Confirmar Envío</h4>
@@ -344,24 +356,48 @@ function App() {
                   </button>
                 </div>
               ) : (
-                /* --- ALERTA DINÁMICA (VERDE PARA VENTA, AZUL PARA ENVÍO) --- */
-                <div className={`border-2 rounded-xl px-10 py-6 text-center mt-4 shadow-2xl transition-all ${
-                  claimMode === 'sold' 
-                    ? 'bg-green-500/10 border-green-500/50 shadow-[0_0_30px_rgba(34,197,94,0.2)]' 
-                    : 'bg-blue-500/10 border-blue-500/50 shadow-[0_0_30px_rgba(59,130,246,0.2)]'
-                }`}>
-                  <div className="text-4xl mb-2 animate-bounce-short">
-                    {claimMode === 'sold' ? '✅' : '📦'}
-                  </div>
-                  <p className={`font-black text-xl tracking-widest uppercase ${claimMode === 'sold' ? 'text-green-400' : 'text-blue-400'}`}>
-                    {claimMode === 'sold' ? '¡SOBRE PROCESADO!' : '¡PEDIDO PROCESADO!'}
-                  </p>
-                  <p className={`${claimMode === 'sold' ? 'text-green-200/70' : 'text-blue-200/70'} font-medium mt-1 italic`}>
-                    {claimMode === 'sold' 
-                      ? 'Tus créditos han sido actualizados.' 
-                      : 'Tus cartas van en camino a tu dirección.'} <br/>
-                    <span className="text-xs uppercase font-bold tracking-tighter opacity-50">Volviendo a la tienda en 3s...</span>
-                  </p>
+                /* --- ALERTAS DE PROCESAMIENTO REESTRUCTURADAS --- */
+                <div className="w-full max-w-lg">
+                  {/* ALERTA DE VENTA COMPLETA (VERDE) */}
+                  {claimMode === 'sold' && (
+                    <div className="bg-green-500/10 border-2 border-green-500/50 rounded-xl px-10 py-6 text-center mt-4 shadow-[0_0_30px_rgba(34,197,94,0.2)]">
+                      <div className="text-4xl mb-2 animate-bounce-short">✅</div>
+                      <p className="text-green-400 font-black text-xl tracking-widest uppercase">¡SOBRE PROCESADO!</p>
+                      <p className="text-green-200/70 font-medium mt-1 italic">
+                        Tus créditos han sido actualizados. <br/>
+                        <span className="text-xs uppercase font-bold tracking-tighter opacity-50">Volviendo a la tienda en 4s...</span>
+                      </p>
+                    </div>
+                  )}
+
+                  {/* ALERTA DE ENVÍO COMPLETO (AZUL) */}
+                  {claimMode === 'physical' && (
+                    <div className="bg-blue-500/10 border-2 border-blue-500/50 rounded-xl px-10 py-6 text-center mt-4 shadow-[0_0_30px_rgba(59,130,246,0.2)]">
+                      <div className="text-4xl mb-2 animate-bounce-short">📦</div>
+                      <p className="text-blue-400 font-black text-xl tracking-widest uppercase">¡PEDIDO PROCESADO!</p>
+                      <p className="text-blue-200/70 font-medium mt-1 italic">
+                        Tus cartas van en camino a tu dirección. <br/>
+                        <span className="text-xs uppercase font-bold tracking-tighter opacity-50">Volviendo a la tienda en 4s...</span>
+                      </p>
+                    </div>
+                  )}
+
+                  {/* ALERTA DE ENVÍO PARCIAL POR FALTA DE STOCK (NARANJA) */}
+                  {claimMode === 'partial' && outOfStockCard && (
+                    <div className="bg-orange-500/10 border-2 border-orange-500/50 rounded-xl px-6 py-6 text-center mt-4 shadow-[0_0_30px_rgba(249,115,22,0.2)]">
+                      <div className="text-4xl mb-2 animate-bounce-short">⚠️</div>
+                      <p className="text-orange-400 font-black text-xl tracking-widest uppercase">¡ENVÍO PARCIAL!</p>
+                      <p className="text-orange-200/80 font-medium mt-2">
+                        La carta <span className="font-bold text-white">"{outOfStockCard.name}"</span> estaba agotada en nuestro almacén.
+                      </p>
+                      <p className="text-orange-200/80 font-medium mt-1 italic">
+                        Ha sido vendida automáticamente por <span className="text-green-400 font-bold">${parseFloat(outOfStockCard.prices?.usd || 0).toFixed(2)}</span>. El resto de cartas van en camino.
+                      </p>
+                      <p className="text-xs uppercase font-bold tracking-tighter opacity-50 text-orange-200/70 mt-3">
+                        Volviendo a la tienda en 4s...
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
