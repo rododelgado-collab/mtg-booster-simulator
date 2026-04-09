@@ -37,7 +37,6 @@ const playSound = (type, step = 0) => {
 };
 
 function App() {
-  // --- ESTADOS DEL JUEGO ---
   const [credits, setCredits] = useState(100.00); 
   const PACK_COST = 15.00; 
   const [packValue, setPackValue] = useState(0); 
@@ -51,21 +50,15 @@ function App() {
   const [highlightedCardId, setHighlightedCardId] = useState(null); 
   const [mostExpensiveCardId, setMostExpensiveCardId] = useState(null); 
 
-  // --- REFERENCIAS PARA MOVER LA PANTALLA ---
   const cardsSectionRef = useRef(null);
   const carouselRef = useRef(null); 
   const buySectionRef = useRef(null); 
+  const storeSectionRef = useRef(null); 
+  const alertRef = useRef(null); 
 
-  // Deslizamiento hacia el botón al seleccionar un sobre
-  useEffect(() => {
-    if (selectedEd && buySectionRef.current && cards.length === 0) {
-      setTimeout(() => {
-        buySectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }, 100);
-    }
-  }, [selectedEd, cards.length]);
+  // ELIMINAMOS el UseEffect conflictivo que bajaba la pantalla al borrar las cartas.
 
-  // Deslizamiento hacia abajo SOLO cuando aparece la primera carta
+  // Bajar a las cartas al abrir el sobre
   useEffect(() => {
     if (cards.length === 1 && cardsSectionRef.current) {
       setTimeout(() => {
@@ -74,19 +67,39 @@ function App() {
     }
   }, [cards]);
 
+  // Bajar a la alerta cuando se vende o reclama
+  useEffect(() => {
+    if (packClaimed && alertRef.current) {
+      setTimeout(() => {
+        alertRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+    }
+  }, [packClaimed]);
+
+  // Función para volver a la tienda automáticamente
+  const scrollToStore = () => {
+    setTimeout(() => {
+      storeSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      
+      setTimeout(() => {
+        setCards([]);
+        setPackValue(0);
+        setPackClaimed(false);
+      }, 500); 
+      
+    }, 3000); 
+  };
+
   const openBooster = async () => {
     if (!selectedEd || isRevealing) return;
-
-    // --- NUEVO: CANDADO DE SEGURIDAD AL BOTÓN DE COMPRA ---
     if (cards.length > 0 && !packClaimed) {
-      alert("⚠️ ¡Aún tienes cartas en la mesa! Vende o reclama el sobre actual antes de comprar uno nuevo.");
-      // Opcional: Hacer scroll hacia abajo para que vea los botones
+      alert("⚠️ ¡Vende o reclama el sobre actual antes de comprar uno nuevo!");
       cardsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
     
     if (credits < PACK_COST) {
-      alert("¡No tienes suficientes créditos! Vende las cartas de tus sobres anteriores para continuar.");
+      alert("¡No tienes suficientes créditos!");
       return;
     }
 
@@ -110,10 +123,7 @@ function App() {
       for (const query of queries) {
         const res = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(query.q)}&order=random`);
         const data = await res.json();
-        if (data.data) {
-          const selection = data.data.slice(0, query.n);
-          fullPack = [...fullPack, ...selection];
-        }
+        if (data.data) fullPack = [...fullPack, ...data.data.slice(0, query.n)];
       }
 
       setLoading(false);
@@ -127,7 +137,6 @@ function App() {
           currentRevealed = [...currentRevealed, card];
           setCards(currentRevealed);
           setHighlightedCardId(card.id);
-
           playSound('tick', i);
 
           const price = parseFloat(card.prices?.usd || 0);
@@ -145,7 +154,6 @@ function App() {
 
           if (i === fullPack.length - 1) {
             setHighlightedCardId(null);
-
             let maxPrice = -1;
             let expensiveId = null;
             fullPack.forEach(c => {
@@ -155,20 +163,15 @@ function App() {
                 expensiveId = c.id;
               }
             });
-            
             setMostExpensiveCardId(expensiveId);
             setIsRevealing(false);
-            
-            setTimeout(() => {
-              playSound('epic');
-            }, 200); 
+            setTimeout(() => playSound('epic'), 200); 
           }
         }, i * 450); 
       });
 
     } catch (err) {
       console.error(err);
-      alert("Error al invocar las cartas...");
       setCredits(prev => prev + PACK_COST);
       setLoading(false);
     }
@@ -178,12 +181,13 @@ function App() {
     setCredits(prev => prev + packValue);
     setPackClaimed(true);
     setMostExpensiveCardId(null); 
+    scrollToStore(); 
   };
 
   const handleClaimPhysical = () => {
-    alert("¡Pedido procesado! Las cartas están siendo preparadas para su envío a tu domicilio. 🚚📦");
     setPackClaimed(true);
     setMostExpensiveCardId(null); 
+    scrollToStore(); 
   };
 
   return (
@@ -191,7 +195,7 @@ function App() {
       
       <nav className="fixed top-0 left-0 w-full z-50 bg-gray-900 border-b border-gray-800 p-4 flex justify-between items-center shadow-lg">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-linear-to-tr from-purple-600 to-blue-500 rounded-full flex items-center justify-center font-bold border-2 border-white/20">
+          <div className="w-10 h-10 bg-linear-to-tr from-purple-600 to-blue-500 rounded-full flex items-center justify-center font-bold border-2 border-white/20 shadow-[0_0_15px_rgba(147,51,234,0.3)]">
             PW
           </div>
           <div className="hidden sm:block">
@@ -200,7 +204,7 @@ function App() {
           </div>
         </div>
 
-        <div className={`px-5 py-2 rounded-full border-2 transition-all flex items-center gap-2 font-mono text-lg
+        <div className={`px-5 py-2 rounded-full border-2 transition-all flex items-center gap-2 font-mono text-lg shadow-inner
           ${credits < PACK_COST ? 'bg-red-950 border-red-500 text-red-400' : 'bg-black border-yellow-500/50 text-yellow-400'}`}
         >
           <span>💰</span>
@@ -208,8 +212,8 @@ function App() {
         </div>
       </nav>
 
-      <header className="pt-32 pb-10">
-        <h1 className="text-center text-4xl font-black mb-10 tracking-widest text-transparent bg-clip-text bg-linear-to-r from-yellow-400 to-red-600">
+      <header ref={storeSectionRef} className="pt-32 pb-10 scroll-mt-32">
+        <h1 className="text-center text-4xl font-black mb-10 tracking-widest text-transparent bg-clip-text bg-linear-to-r from-yellow-400 to-red-600 drop-shadow-sm">
           MERCADO DE EDICIONES
         </h1>
         
@@ -219,32 +223,31 @@ function App() {
               key={ed.id}
               onClick={() => {
                 if (isRevealing || loading) return;
-
-                // --- NUEVO: CANDADO DE SEGURIDAD AL CAMBIAR DE EDICIÓN ---
                 if (cards.length > 0 && !packClaimed) {
-                  alert("⚠️ ¡Aún tienes cartas sin procesar! Por favor, elige 'Vender' o 'Reclamar' en tu sobre abierto antes de cambiar de edición.");
-                  // Hacemos que la pantalla baje hacia donde están los botones
+                  alert("⚠️ ¡Termina de procesar el sobre actual!");
                   cardsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                   return;
                 }
-
                 setSelectedEd(ed);
-                // Solo vaciamos las cartas si ya procesó las anteriores o no había cartas
                 setCards([]);
                 setMostExpensiveCardId(null);
+                
+                // NUEVO: Movimos el scroll aquí. Solo baja si haces clic explícitamente en una edición.
+                setTimeout(() => {
+                  buySectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 100);
               }}
               className={`flex-none w-56 snap-center cursor-pointer transition-all duration-300 transform
-                ${selectedEd?.id === ed.id ? 'scale-110 opacity-100 ring-4 ring-yellow-500 rounded-lg' : 'opacity-50 grayscale hover:grayscale-0'}
+                ${selectedEd?.id === ed.id ? 'scale-110 opacity-100 ring-4 ring-yellow-500 rounded-lg shadow-[0_0_30px_rgba(234,179,8,0.3)]' : 'opacity-50 grayscale hover:grayscale-0 hover:scale-105'}
               `}
             >
               <img src={ed.cover} className="rounded-lg shadow-2xl border-2 border-gray-700 w-full h-80 object-cover" alt={ed.name} />
-              <p className="text-center mt-4 font-black text-lg uppercase">{ed.name}</p>
+              <p className="text-center mt-4 font-black text-lg uppercase tracking-wider">{ed.name}</p>
             </div>
           ))}
         </div>
       </header>
 
-{/* BOTÓN DE COMPRA CON REFERENCIA Y MEJORAS PARA MÓVILES */}
       <div ref={buySectionRef} className="flex justify-center mb-12 min-h-20 px-5">
         {selectedEd && (
           <button 
@@ -261,14 +264,7 @@ function App() {
               }
             `}
           >
-            {loading 
-              ? "PROCESANDO PAGO..." 
-              : isRevealing
-                ? "ABRIENDO SOBRE..."
-                : (cards.length > 0 && !packClaimed)
-                  ? `¡SOBRE DE ${selectedEd.name} ABIERTO!`
-                  : `COMPRAR SOBRE (-$${PACK_COST.toFixed(2)})`
-            }
+            {loading ? "PROCESANDO PAGO..." : isRevealing ? "ABRIENDO SOBRE..." : (cards.length > 0 && !packClaimed) ? `¡SOBRE DE ${selectedEd.name} ABIERTO!` : `COMPRAR SOBRE (-$${PACK_COST.toFixed(2)})`}
           </button>
         )}
       </div>
@@ -278,43 +274,36 @@ function App() {
           <>
             <div ref={carouselRef} className="flex overflow-x-auto gap-4 px-10 pb-6 snap-x scroll-smooth">
               {cards.map((card, i) => (
-                <Card 
-                  key={`${card.id}-${i}`} 
-                  card={card} 
-                  isHighlighted={card.id === highlightedCardId}
-                  isMostExpensive={card.id === mostExpensiveCardId}
-                />
+                <Card key={`${card.id}-${i}`} card={card} isHighlighted={card.id === highlightedCardId} isMostExpensive={card.id === mostExpensiveCardId} />
               ))}
             </div>
 
-            <div className="mt-8 px-10 flex flex-col items-center">
+            <div ref={alertRef} className="mt-8 px-10 flex flex-col items-center">
               <h3 className="text-xl text-gray-300 mb-6 font-mono border-b border-gray-700 pb-2">
-                Valor estimado del sobre: <span className="text-green-400 font-bold">${packValue.toFixed(2)}</span>
+                Valor del sobre: <span className="text-green-400 font-bold">${packValue.toFixed(2)}</span>
               </h3>
               
               {isRevealing ? (
-                <div className="bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 px-8 py-3 rounded-full font-bold animate-pulse tracking-widest uppercase shadow-[0_0_15px_rgba(234,179,8,0.2)]">
+                <div className="bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 px-8 py-3 rounded-full font-bold animate-pulse tracking-widest uppercase">
                   ✨ Revelando Misticismo... ✨
                 </div>
               ) : !packClaimed ? (
                 <div className="flex flex-wrap justify-center gap-4">
-                  <button 
-                    onClick={handleSellPack}
-                    className="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-8 rounded-lg transition-all flex items-center gap-2 active:scale-95 shadow-lg shadow-green-900/50"
-                  >
-                    <span>💸</span> Vender Cartas (+${packValue.toFixed(2)})
+                  <button onClick={handleSellPack} className="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-8 rounded-lg transition-all flex items-center gap-2 active:scale-95 shadow-lg shadow-green-900/50">
+                    <span>💸</span> Vender (+${packValue.toFixed(2)})
                   </button>
-                  <button 
-                    onClick={handleClaimPhysical}
-                    className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-lg transition-all flex items-center gap-2 active:scale-95 shadow-lg shadow-blue-900/50"
-                  >
-                    <span>📦</span> Reclamar Físicas (Envío)
+                  <button onClick={handleClaimPhysical} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-lg transition-all flex items-center gap-2 active:scale-95 shadow-lg shadow-blue-900/50">
+                    <span>📦</span> Reclamar Físicas
                   </button>
                 </div>
               ) : (
-                <div className="bg-gray-800/50 border border-gray-600 rounded-lg px-8 py-4 text-center mt-4">
-                  <p className="text-gray-400 font-bold tracking-widest uppercase">¡Sobre procesado exitosamente!</p>
-                  <p className="text-sm text-gray-500 mt-1">Ya puedes comprar uno nuevo en el botón de arriba.</p>
+                <div className="bg-green-500/10 border-2 border-green-500/50 rounded-xl px-10 py-6 text-center mt-4 shadow-[0_0_30px_rgba(34,197,94,0.2)]">
+                  <div className="text-4xl mb-2 animate-pulse">✅</div>
+                  <p className="text-green-400 font-black text-xl tracking-widest uppercase">¡SOBRE PROCESADO!</p>
+                  <p className="text-green-200/70 font-medium mt-1 italic">
+                    Tus créditos han sido actualizados. <br/>
+                    <span className="text-xs uppercase font-bold tracking-tighter opacity-50">Volviendo a la tienda en 3s...</span>
+                  </p>
                 </div>
               )}
             </div>
