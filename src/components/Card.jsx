@@ -1,52 +1,77 @@
 import React from 'react';
+// eslint-disable-next-line no-unused-vars
+import { motion } from 'framer-motion';
 
-// Aceptamos las nuevas props para el resaltado
-export const Card = ({ card, isHighlighted, isMostExpensive }) => {
-  const { name, rarity, prices, image_uris, set_name } = card;
-  const imageUrl = image_uris?.normal || 'https://cards.scryfall.com/image_placeholder.png';
-  const priceUsd = prices?.usd ? `$${parseFloat(prices.usd).toFixed(2)}` : 'N/A';
+// Recibimos el "index" que nos mandó el carrusel
+export const Card = ({ card, isHighlighted, isMostExpensive, index = 0 }) => {
+  const price = parseFloat(card.prices?.usd || 0).toFixed(2);
 
-  // Lógica de brillo permanente por rareza (mismo que antes)
-  const isUncommon = rarity === 'uncommon';
-  const isRareMythic = rarity === 'rare' || rarity === 'mythic';
-
-  // --- LÓGICA DE RESALTADO DINÁMICO (NUEVO) ---
-  
-  // Resaltado temporal al aparecer (anillo amarillo brillante)
-  const highlightedClasses = isHighlighted 
-    ? 'ring-8 ring-yellow-400 ring-offset-4 ring-offset-slate-950 scale-105 z-30 shadow-[0_0_60px_rgba(234,179,8,0.4)]'
-    : '';
-
-  // Resaltado final permanente para la más cara (anillo verde brillante con gran brillo)
-  const expensiveClasses = isMostExpensive
-    ? 'ring-8 ring-green-400 ring-offset-4 ring-offset-slate-950 shadow-[0_0_70px_rgba(74,222,128,0.6)] scale-105 z-30'
-    : '';
+  const cardVariants = {
+    hidden: { 
+      opacity: 0, 
+      scale: 0,       
+      y: 100,         
+      rotateX: 180,   
+      rotateY: 90,    
+    },
+    visible: { 
+      opacity: 1, 
+      scale: 1,       
+      y: 0,           
+      rotateX: 0,     
+      rotateY: 0,     
+      transition: {
+        type: "spring",      
+        stiffness: 70,      
+        damping: 15,         
+        duration: 0.8,
+        // ¡NUEVO! Retraso escalonado: 0.02 segundos por cada posición
+        delay: index * 0.02  
+      }
+    }
+  };
 
   return (
-    <div className={`flex-none w-56 snap-center transition-all duration-300 relative group
-      ${isRareMythic ? 'hover:scale-110' : 'hover:scale-105'}
-      ${isUncommon ? 'shadow-[0_0_30px_rgba(255,255,255,0.1)]' : ''}
-      ${isRareMythic ? 'shadow-[0_0_35px_rgba(255,215,0,0.15)]' : ''}
-      
-      /* Aplicamos las clases de resaltado */
-      ${highlightedClasses} 
-      ${expensiveClasses}
-    `}>
-      {/* Glow effects based on rarity (mismo que antes) */}
-      {isUncommon && <div className="absolute inset-0 bg-white/5 rounded-lg blur-2xl group-hover:bg-white/10 z-0" />}
-      {isRareMythic && <div className="absolute inset-0 bg-yellow-500/10 rounded-lg blur-3xl group-hover:bg-yellow-500/20 z-0" />}
-      
-      {/* Contenido de la carta (subimos el z-index) */}
-      <img src={imageUrl} alt={name} className="rounded-lg shadow-2xl border-2 border-gray-700 w-full relative z-10" />
-      
-      {/* Info panel (subimos el z-index) */}
-      <div className="absolute bottom-2 left-2 right-2 bg-black/70 p-2 rounded z-20 backdrop-blur-sm border border-white/10">
-        <p className="font-black text-sm uppercase truncate text-yellow-400">{name}</p>
-        <div className="flex justify-between items-center text-xs mt-1">
-          <span className="text-gray-400 truncate w-32">{set_name}</span>
-          <span className="font-bold text-green-400 text-sm">{priceUsd}</span>
+    <motion.div
+      className="flex-none w-48 snap-center cursor-pointer"
+      variants={cardVariants}   
+      initial="hidden"         
+      animate="visible"        
+      whileHover={{ 
+        scale: 1.05, 
+        y: -10,
+        transition: { duration: 0.2 } 
+      }}
+    >
+      <div 
+        className={`relative rounded-lg shadow-2xl overflow-hidden transition-all duration-300 border-4
+          ${isHighlighted ? 'border-yellow-400 scale-105 shadow-[0_0_30px_rgba(234,179,8,0.5)]' : 'border-gray-700'}
+          ${isMostExpensive ? 'border-green-400 shadow-[0_0_30px_rgba(34,197,94,0.5)]' : ''}
+        `}
+      >
+        <img 
+          src={card.image_uris?.normal} 
+          alt={card.name} 
+          className="w-full h-auto object-cover" 
+          loading="lazy"
+        />
+        
+        <div className="absolute bottom-0 left-0 w-full bg-linear-to-t from-black/90 to-black/10 p-3 pt-10 pointer-events-none">
+          <p className="font-black text-xs uppercase tracking-wider truncate text-white drop-shadow-md">
+            {card.name}
+          </p>
+          <div className="flex justify-between items-center mt-1">
+            <p className="text-[10px] text-gray-400 font-medium truncate">
+              {card.set_name}
+            </p>
+            <p className={`font-mono font-bold text-sm drop-shadow-md
+              ${isMostExpensive ? 'text-green-400' : 'text-yellow-400'}
+            `}>
+              ${price}
+            </p>
+          </div>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 };

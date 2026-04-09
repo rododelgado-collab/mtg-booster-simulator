@@ -7,64 +7,46 @@ import { StoreSection } from './components/StoreSection';
 import { CardCarousel } from './components/CardCarousel';
 import { ActionPanel } from './components/ActionPanel';
 
-// --- SINTETIZADOR DE EFECTOS DE SONIDO ---
-const playSound = (type, step = 0) => {
-  try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
-    const ctx = new AudioContext();
-    const osc = ctx.createOscillator();
-    const gainNode = ctx.createGain();
-
-    osc.connect(gainNode);
-    gainNode.connect(ctx.destination);
-
-    if (type === 'tick') {
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(300 + (step * 40), ctx.currentTime);
-      gainNode.gain.setValueAtTime(0.1, ctx.currentTime); 
-      gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1); 
-      osc.start();
-      osc.stop(ctx.currentTime + 0.1);
-    } else if (type === 'epic') {
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(440, ctx.currentTime); 
-      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.5); 
-      gainNode.gain.setValueAtTime(0.2, ctx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.5); 
-      osc.start();
-      osc.stop(ctx.currentTime + 1.5);
-    }
-  } catch (e) {
-    console.log("El navegador bloqueó el audio", e);
-  }
-};
+// --- HOOKS IMPORTADOS ---
+import { useAudio } from './hooks/useAudio';
+import { useBooster } from './hooks/useBooster';
 
 function App() {
   const PACK_COST = 15.00; 
   
-  // Estados Globales
-  const [credits, setCredits] = useState(100.00); 
-  const [packValue, setPackValue] = useState(0); 
+  // 1. ESTADOS GLOBALES (Con LocalStorage para los créditos)
+  const [credits, setCredits] = useState(() => {
+    const savedCredits = localStorage.getItem('pw_credits');
+    return savedCredits !== null ? parseFloat(savedCredits) : 100.00;
+  });
+  const [selectedEd, setSelectedEd] = useState(null);
+  
+  // 2. ESTADOS DE FLUJO DE RECLAMO
   const [packClaimed, setPackClaimed] = useState(false); 
   const [claimMode, setClaimMode] = useState(null); 
   const [showShippingPrompt, setShowShippingPrompt] = useState(false); 
   const [outOfStockCard, setOutOfStockCard] = useState(null); 
-  const [selectedEd, setSelectedEd] = useState(null);
-  const [cards, setCards] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [isRevealing, setIsRevealing] = useState(false); 
-  const [highlightedCardId, setHighlightedCardId] = useState(null); 
-  const [mostExpensiveCardId, setMostExpensiveCardId] = useState(null); 
 
-  // Referencias
+  // 3. REFERENCIAS PARA SCROLL AUTOMÁTICO
   const cardsSectionRef = useRef(null);
   const carouselRef = useRef(null); 
   const buySectionRef = useRef(null); 
   const storeSectionRef = useRef(null); 
   const alertRef = useRef(null); 
 
-  // Efectos de Scroll
+  // 4. CUSTOM HOOKS EN ACCIÓN
+  const { playSound, isMuted, toggleMute } = useAudio();
+  const { 
+    cards, packValue, loading, isRevealing, highlightedCardId, mostExpensiveCardId, 
+    openBooster, resetBooster 
+  } = useBooster(credits, setCredits, PACK_COST, playSound, carouselRef);
+
+  // 5. EFECTO: GUARDAR CRÉDITOS EN LOCALSTORAGE
+  useEffect(() => {
+    localStorage.setItem('pw_credits', credits.toString());
+  }, [credits]);
+
+  // 6. EFECTOS DE SCROLL AUTOMÁTICOS
   useEffect(() => {
     if (cards.length === 1 && cardsSectionRef.current) {
       setTimeout(() => cardsSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
@@ -83,115 +65,35 @@ function App() {
     }
   }, [showShippingPrompt]);
 
+  // 7. FUNCIONES DE LÓGICA DE NEGOCIO
   const scrollToStore = () => {
     setTimeout(() => {
       storeSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       setTimeout(() => {
-        setCards([]);
-        setPackValue(0);
+        resetBooster(); 
         setPackClaimed(false);
         setClaimMode(null);
         setShowShippingPrompt(false);
         setOutOfStockCard(null);
-        setSelectedEd(null); // Opcional: Deselecciona la edición para un reinicio limpio
+        setSelectedEd(null); 
       }, 500); 
     }, 4000); 
   };
 
-  const openBooster = async () => {
-    if (!selectedEd || isRevealing) return;
+  const handleOpenBooster = () => {
     if (cards.length > 0 && !packClaimed) {
       alert("⚠️ ¡Procesa el sobre actual antes de comprar uno nuevo!");
       cardsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
-    
-    if (credits < PACK_COST) {
-      alert("¡No tienes suficientes créditos!");
-      return;
-    }
-
-    setCredits(prev => prev - PACK_COST);
-    setLoading(true);
-    setCards([]);
-    setPackClaimed(false);
-    setClaimMode(null);
-    setShowShippingPrompt(false);
-    setOutOfStockCard(null);
-    setPackValue(0);
-    setHighlightedCardId(null); 
-    setMostExpensiveCardId(null);
-
-    const queries = [
-      { q: `s:${selectedEd.id} t:basic`, n: 1 },
-      { q: `s:${selectedEd.id} r:c -t:basic`, n: 9 },
-      { q: `s:${selectedEd.id} r:u`, n: 4 },
-      { q: `s:${selectedEd.id} r:r`, n: 1 }
-    ];
-
-    try {
-      let fullPack = [];
-      for (const query of queries) {
-        const res = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(query.q)}&order=random`);
-        const data = await res.json();
-        if (data.data) fullPack = [...fullPack, ...data.data.slice(0, query.n)];
-      }
-
-      setLoading(false);
-      setIsRevealing(true); 
-
-      let currentRevealed = [];
-      let runningValue = 0;
-
-      fullPack.forEach((card, i) => {
-        setTimeout(() => {
-          currentRevealed = [...currentRevealed, card];
-          setCards(currentRevealed);
-          setHighlightedCardId(card.id);
-          playSound('tick', i);
-
-          const price = parseFloat(card.prices?.usd || 0);
-          runningValue += price;
-          setPackValue(runningValue);
-
-          setTimeout(() => {
-            if (carouselRef.current) {
-              carouselRef.current.scrollTo({ left: carouselRef.current.scrollWidth + 500, behavior: 'smooth' });
-            }
-          }, 50);
-
-          if (i === fullPack.length - 1) {
-            setHighlightedCardId(null);
-            let maxPrice = -1;
-            let expensiveId = null;
-            fullPack.forEach(c => {
-              const priceNum = parseFloat(c.prices?.usd || 0);
-              if (priceNum > maxPrice) { maxPrice = priceNum; expensiveId = c.id; }
-            });
-            setMostExpensiveCardId(expensiveId);
-            setIsRevealing(false);
-            setTimeout(() => playSound('epic'), 200); 
-          }
-        }, i * 450); 
-      });
-
-    } catch (err) {
-      console.error(err);
-      setCredits(prev => prev + PACK_COST);
-      setLoading(false);
-    }
+    openBooster(selectedEd);
   };
 
   const handleSellPack = () => {
     setCredits(prev => prev + packValue);
     setClaimMode('sold');
     setPackClaimed(true);
-    setMostExpensiveCardId(null); 
     scrollToStore(); 
-  };
-
-  const handleClaimPhysical = () => {
-    setShowShippingPrompt(true);
   };
 
   const confirmShipping = (type) => {
@@ -200,7 +102,9 @@ function App() {
       if (!address) return; 
     }
     
+    // 30% de probabilidad de que una carta no esté en stock
     const hayFaltaDeStock = Math.random() < 0.30;
+    
     if (hayFaltaDeStock && cards.length > 0) {
       const indiceAleatorio = Math.floor(Math.random() * cards.length);
       const cartaAgotada = cards[indiceAleatorio];
@@ -215,20 +119,32 @@ function App() {
 
     setShowShippingPrompt(false);
     setPackClaimed(true);
-    setMostExpensiveCardId(null); 
     scrollToStore(); 
+  };
+
+  // Opcional: Función por si luego quieres poner un botón de reiniciar en el NavBar
+  const resetProgress = () => {
+    if (window.confirm("¿Seguro que quieres reiniciar tus créditos a $100?")) {
+      setCredits(100.00);
+    }
   };
 
   return (
     <div className="min-h-screen bg-slate-950 text-white font-sans overflow-x-hidden">
       
-      <NavBar credits={credits} packCost={PACK_COST} />
-
+      <NavBar 
+        credits={credits} 
+        packCost={PACK_COST} 
+        isMuted={isMuted}
+        toggleMute={toggleMute}
+        resetProgress={resetProgress} // Descomenta si lo agregas al NavBar
+      />
+      
       <StoreSection 
         selectedEd={selectedEd} setSelectedEd={setSelectedEd}
         cards={cards} packClaimed={packClaimed}
         isRevealing={isRevealing} loading={loading}
-        openBooster={openBooster} credits={credits} packCost={PACK_COST}
+        openBooster={handleOpenBooster} credits={credits} packCost={PACK_COST}
         storeRef={storeSectionRef} buyRef={buySectionRef} cardsRef={cardsSectionRef}
       />
 
@@ -244,8 +160,8 @@ function App() {
               packValue={packValue} isRevealing={isRevealing}
               showShippingPrompt={showShippingPrompt} setShowShippingPrompt={setShowShippingPrompt}
               packClaimed={packClaimed} claimMode={claimMode} outOfStockCard={outOfStockCard}
-              handleSellPack={handleSellPack} handleClaimPhysical={handleClaimPhysical} confirmShipping={confirmShipping}
-              alertRef={alertRef}
+              handleSellPack={handleSellPack} handleClaimPhysical={() => setShowShippingPrompt(true)} 
+              confirmShipping={confirmShipping} alertRef={alertRef}
             />
           </>
         ) : (
