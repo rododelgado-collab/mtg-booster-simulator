@@ -40,7 +40,11 @@ function App() {
   const [credits, setCredits] = useState(100.00); 
   const PACK_COST = 15.00; 
   const [packValue, setPackValue] = useState(0); 
+  
+  // --- NUEVOS ESTADOS DE PROCESAMIENTO ---
   const [packClaimed, setPackClaimed] = useState(false); 
+  const [claimMode, setClaimMode] = useState(null); // 'sold' (vendido) o 'physical' (físico)
+  const [showShippingPrompt, setShowShippingPrompt] = useState(false); // Mostrar pregunta de envío
 
   const [selectedEd, setSelectedEd] = useState(null);
   const [cards, setCards] = useState([]);
@@ -56,8 +60,6 @@ function App() {
   const storeSectionRef = useRef(null); 
   const alertRef = useRef(null); 
 
-  // ELIMINAMOS el UseEffect conflictivo que bajaba la pantalla al borrar las cartas.
-
   // Bajar a las cartas al abrir el sobre
   useEffect(() => {
     if (cards.length === 1 && cardsSectionRef.current) {
@@ -67,7 +69,7 @@ function App() {
     }
   }, [cards]);
 
-  // Bajar a la alerta cuando se vende o reclama
+  // Bajar a la alerta final cuando se procesa algo
   useEffect(() => {
     if (packClaimed && alertRef.current) {
       setTimeout(() => {
@@ -75,6 +77,15 @@ function App() {
       }, 100);
     }
   }, [packClaimed]);
+
+  // Bajar a la pregunta de envío cuando se solicita
+  useEffect(() => {
+    if (showShippingPrompt && alertRef.current) {
+      setTimeout(() => {
+        alertRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+    }
+  }, [showShippingPrompt]);
 
   // Función para volver a la tienda automáticamente
   const scrollToStore = () => {
@@ -85,6 +96,8 @@ function App() {
         setCards([]);
         setPackValue(0);
         setPackClaimed(false);
+        setClaimMode(null);
+        setShowShippingPrompt(false);
       }, 500); 
       
     }, 3000); 
@@ -93,7 +106,7 @@ function App() {
   const openBooster = async () => {
     if (!selectedEd || isRevealing) return;
     if (cards.length > 0 && !packClaimed) {
-      alert("⚠️ ¡Vende o reclama el sobre actual antes de comprar uno nuevo!");
+      alert("⚠️ ¡Procesa el sobre actual antes de comprar uno nuevo!");
       cardsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
@@ -107,6 +120,8 @@ function App() {
     setLoading(true);
     setCards([]);
     setPackClaimed(false);
+    setClaimMode(null);
+    setShowShippingPrompt(false);
     setPackValue(0);
     setHighlightedCardId(null); 
     setMostExpensiveCardId(null);
@@ -179,12 +194,26 @@ function App() {
 
   const handleSellPack = () => {
     setCredits(prev => prev + packValue);
+    setClaimMode('sold');
     setPackClaimed(true);
     setMostExpensiveCardId(null); 
     scrollToStore(); 
   };
 
   const handleClaimPhysical = () => {
+    // En lugar de procesar directo, mostramos la pregunta
+    setShowShippingPrompt(true);
+  };
+
+  const confirmShipping = (type) => {
+    if (type === 'new') {
+      const address = window.prompt("Por favor, ingresa la nueva dirección de envío:");
+      if (!address) return; // Si cancela, no hacemos nada
+    }
+    
+    // Si elige guardada o ingresa una nueva, procedemos
+    setShowShippingPrompt(false);
+    setClaimMode('physical');
     setPackClaimed(true);
     setMostExpensiveCardId(null); 
     scrollToStore(); 
@@ -224,7 +253,7 @@ function App() {
               onClick={() => {
                 if (isRevealing || loading) return;
                 if (cards.length > 0 && !packClaimed) {
-                  alert("⚠️ ¡Termina de procesar el sobre actual!");
+                  alert("⚠️ ¡Procesa el sobre actual!");
                   cardsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                   return;
                 }
@@ -232,7 +261,6 @@ function App() {
                 setCards([]);
                 setMostExpensiveCardId(null);
                 
-                // NUEVO: Movimos el scroll aquí. Solo baja si haces clic explícitamente en una edición.
                 setTimeout(() => {
                   buySectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }, 100);
@@ -287,6 +315,25 @@ function App() {
                 <div className="bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 px-8 py-3 rounded-full font-bold animate-pulse tracking-widest uppercase">
                   ✨ Revelando Misticismo... ✨
                 </div>
+              ) : showShippingPrompt ? (
+                /* --- NUEVO: UI DE PREGUNTA DE DIRECCIÓN --- */
+                <div className="bg-blue-900/40 border-2 border-blue-500/50 rounded-xl px-8 py-6 text-center shadow-[0_0_20px_rgba(59,130,246,0.3)] w-full max-w-lg animate-fade-in">
+                  <div className="text-4xl mb-3">🚚</div>
+                  <h4 className="text-2xl font-black text-blue-400 mb-2 tracking-wide uppercase">Confirmar Envío</h4>
+                  <p className="text-blue-100/80 mb-6 font-medium">¿A dónde enviamos tus cartas físicas?</p>
+                  
+                  <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                    <button onClick={() => confirmShipping('saved')} className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white px-5 py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-2 shadow-lg active:scale-95">
+                      <span>🏠</span> Dirección Guardada
+                    </button>
+                    <button onClick={() => confirmShipping('new')} className="w-full sm:w-auto bg-gray-700 hover:bg-gray-600 text-white px-5 py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-2 shadow-lg active:scale-95">
+                      <span>📍</span> Otra Dirección
+                    </button>
+                  </div>
+                  <button onClick={() => setShowShippingPrompt(false)} className="mt-4 text-gray-400 hover:text-white underline text-sm transition-colors">
+                    Cancelar
+                  </button>
+                </div>
               ) : !packClaimed ? (
                 <div className="flex flex-wrap justify-center gap-4">
                   <button onClick={handleSellPack} className="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-8 rounded-lg transition-all flex items-center gap-2 active:scale-95 shadow-lg shadow-green-900/50">
@@ -297,11 +344,22 @@ function App() {
                   </button>
                 </div>
               ) : (
-                <div className="bg-green-500/10 border-2 border-green-500/50 rounded-xl px-10 py-6 text-center mt-4 shadow-[0_0_30px_rgba(34,197,94,0.2)]">
-                  <div className="text-4xl mb-2 animate-pulse">✅</div>
-                  <p className="text-green-400 font-black text-xl tracking-widest uppercase">¡SOBRE PROCESADO!</p>
-                  <p className="text-green-200/70 font-medium mt-1 italic">
-                    Tus créditos han sido actualizados. <br/>
+                /* --- ALERTA DINÁMICA (VERDE PARA VENTA, AZUL PARA ENVÍO) --- */
+                <div className={`border-2 rounded-xl px-10 py-6 text-center mt-4 shadow-2xl transition-all ${
+                  claimMode === 'sold' 
+                    ? 'bg-green-500/10 border-green-500/50 shadow-[0_0_30px_rgba(34,197,94,0.2)]' 
+                    : 'bg-blue-500/10 border-blue-500/50 shadow-[0_0_30px_rgba(59,130,246,0.2)]'
+                }`}>
+                  <div className="text-4xl mb-2 animate-bounce-short">
+                    {claimMode === 'sold' ? '✅' : '📦'}
+                  </div>
+                  <p className={`font-black text-xl tracking-widest uppercase ${claimMode === 'sold' ? 'text-green-400' : 'text-blue-400'}`}>
+                    {claimMode === 'sold' ? '¡SOBRE PROCESADO!' : '¡PEDIDO PROCESADO!'}
+                  </p>
+                  <p className={`${claimMode === 'sold' ? 'text-green-200/70' : 'text-blue-200/70'} font-medium mt-1 italic`}>
+                    {claimMode === 'sold' 
+                      ? 'Tus créditos han sido actualizados.' 
+                      : 'Tus cartas van en camino a tu dirección.'} <br/>
                     <span className="text-xs uppercase font-bold tracking-tighter opacity-50">Volviendo a la tienda en 3s...</span>
                   </p>
                 </div>
