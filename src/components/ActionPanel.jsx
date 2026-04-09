@@ -50,7 +50,7 @@ export const ActionPanel = ({
               <p className="text-green-400 font-black text-xl tracking-widest uppercase">¡SOBRE PROCESADO!</p>
               <p className="text-green-200/70 font-medium mt-1 italic">
                 Tus créditos han sido actualizados. <br/>
-                <span className="text-xs uppercase font-bold tracking-tighter opacity-50">Volviendo a la tienda en 4s...</span>
+                <span className="text-xs uppercase font-bold tracking-tighter opacity-50">Volviendo a la tienda en 3s...</span>
               </p>
             </div>
           )}

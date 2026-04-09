@@ -77,7 +77,7 @@ function App() {
         setOutOfStockCard(null);
         setSelectedEd(null); 
       }, 500); 
-    }, 4000); 
+    }, 3000); 
   };
 
   const handleOpenBooster = () => {

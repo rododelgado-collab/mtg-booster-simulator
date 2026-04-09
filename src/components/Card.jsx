@@ -1,13 +1,17 @@
-import React from 'react';
+import React, { useRef } from 'react';
+// eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
-// Importa tu hook (ajusta la ruta según la estructura de tus carpetas)
-import useAudio from '../hooks/useAudio'; 
+// Ajusta la ruta de importación de tu hook según la estructura de tu proyecto
+import { useAudio } from '../hooks/useAudio'; 
 
 export const Card = ({ card, isHighlighted, isMostExpensive, index = 0 }) => {
   const price = parseFloat(card.prices?.usd || 0).toFixed(2);
   
   // Extraemos la función para reproducir del hook
   const { playSound } = useAudio(); 
+
+  // Candado para asegurar que la carta suene solo una vez
+  const hasPlayedSound = useRef(false);
 
   const cardVariants = {
     hidden: { 
@@ -39,10 +43,18 @@ export const Card = ({ card, isHighlighted, isMostExpensive, index = 0 }) => {
       variants={cardVariants}   
       initial="hidden"         
       animate="visible"
-      // ¡AQUÍ ESTÁ LA MAGIA!
-      // Esto llamará al sonido exactamente cuando el delay de 0.02 * index haya terminado
+      // Se ejecuta cuando la animación comienza
       onAnimationStart={() => {
-        playSound(); 
+        // Solo reproducimos si el candado está abierto (es decir, es la primera vez)
+        if (!hasPlayedSound.current) {
+          if (isMostExpensive) {
+            playSound('epic'); // Sonido especial para la más cara
+          } else {
+            playSound('tick', index); // Sonido de tick escalonado para las demás
+          }
+          // Cerramos el candado para que el 'whileHover' no vuelva a disparar el sonido
+          hasPlayedSound.current = true;
+        }
       }}
       whileHover={{ 
         scale: 1.05, 

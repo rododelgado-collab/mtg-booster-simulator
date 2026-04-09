@@ -1,46 +1,73 @@
 import { useState, useCallback } from 'react';
 
+// 1. EL MOTOR DE SONIDO (Compartido por todas)
+let audioCtx = null;
+
+// 2. LA VARIABLE GLOBAL DE MUTE
+// Al estar fuera del hook, si un botón la cambia a "true", 
+// TODAS las cartas se enteran inmediatamente.
+let isGlobalMuted = false; 
+
 export const useAudio = () => {
-  const [isMuted, setIsMuted] = useState(false);
+  // Este estado solo sirve para que tu botón de Mute se pinte correctamente (ícono de encendido/apagado)
+  const [isMuted, setIsMuted] = useState(isGlobalMuted);
 
   const toggleMute = () => {
-    setIsMuted(prev => !prev);
+    isGlobalMuted = !isGlobalMuted; // Cambiamos el jefe global
+    setIsMuted(isGlobalMuted);      // Actualizamos la vista del botón
   };
 
-  const playSound = useCallback((type, step = 0) => {
-    // Si está en mute, salimos de la función sin reproducir nada
-    if (isMuted) return; 
+  const playSound = useCallback((type = 'tick', step = 0) => {
+    // Si la variable global dice silencio, cancelamos al instante
+    if (isGlobalMuted) return; 
 
     try {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContext) return;
-      const ctx = new AudioContext();
-      const osc = ctx.createOscillator();
-      const gainNode = ctx.createGain();
+      if (!audioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        audioCtx = new AudioContext();
+      }
+
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+
+      const osc = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
 
       osc.connect(gainNode);
-      gainNode.connect(ctx.destination);
+      gainNode.connect(audioCtx.destination);
+      
+      const now = audioCtx.currentTime;
 
-      if (type === 'tick') {
+     if (type === 'tick') {
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(300 + (step * 40), ctx.currentTime);
-        gainNode.gain.setValueAtTime(0.1, ctx.currentTime); 
-        gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1); 
-        osc.start();
-        osc.stop(ctx.currentTime + 0.1);
+        // Subí un poco la base a 600Hz para que sea un 'click' más claro
+        osc.frequency.setValueAtTime(600 + (step * 15), now); 
+        
+        gainNode.gain.setValueAtTime(0.05, now); 
+        
+        // ¡REDUCIDO A 0.01 SEGUNDOS! (10 milisegundos)
+        // Así terminará antes de que la siguiente carta empiece
+        gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.01); 
+        
+        osc.start(now);
+        osc.stop(now + 0.01); 
       } else if (type === 'epic') {
         osc.type = 'triangle';
-        osc.frequency.setValueAtTime(440, ctx.currentTime); 
-        osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.5); 
-        gainNode.gain.setValueAtTime(0.2, ctx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.5); 
-        osc.start();
-        osc.stop(ctx.currentTime + 1.5);
+        osc.frequency.setValueAtTime(440, now); 
+        osc.frequency.exponentialRampToValueAtTime(880, now + 0.5); 
+        gainNode.gain.setValueAtTime(0.2, now);
+        
+        // El sonido épico dura 1.5s, se desvanecerá suavemente al final
+        gainNode.gain.exponentialRampToValueAtTime(0.001, now + 1.5); 
+        osc.start(now);
+        osc.stop(now + 1.5);
       }
     } catch (e) {
       console.log("El navegador bloqueó el audio", e);
     }
-  }, [isMuted]); // Agregamos isMuted a las dependencias
+  }, []); 
 
   return { playSound, isMuted, toggleMute };
 };

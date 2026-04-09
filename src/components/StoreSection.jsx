@@ -8,9 +8,14 @@ export const StoreSection = ({
   return (
     <>
       <header ref={storeRef} className="pt-32 pb-10 scroll-mt-32">
-        <h1 className="text-center text-4xl font-black mb-10 tracking-widest text-transparent bg-clip-text bg-linear-to-r from-yellow-400 to-red-600 drop-shadow-sm">
-          MERCADO DE EDICIONES
-        </h1>
+        <div className="text-center my-8">
+          <h1 className="text-5xl font-black uppercase tracking-widest bg-clip-text text-transparent bg-linear-to-r from-yellow-900 via-yellow-200 to-red-700 drop-shadow-lg">
+            El Bazar del Arcano
+          </h1>
+          <p className="mt-4 text-gray-400 text-lg max-w-2xl mx-auto italic">
+            Cada sobre es un territorio inexplorado. Desentierra artefactos olvidados, descubre tesoros invaluables y comienza tu expedición hacia la carta perfecta.
+          </p>
+        </div>
         
         <div className="flex overflow-x-auto gap-8 px-10 pb-6 snap-x">
           {EDITIONS.map((ed) => (
