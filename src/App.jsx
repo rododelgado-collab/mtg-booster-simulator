@@ -7,6 +7,9 @@ import { StoreSection } from './components/StoreSection';
 import { CardCarousel } from './components/CardCarousel';
 import { ActionPanel } from './components/ActionPanel';
 
+// ... otros componentes
+import { clearCardSounds } from './utils/cardSounds';
+
 // --- HOOKS IMPORTADOS ---
 import { useAudio } from './hooks/useAudio';
 import { useBooster } from './hooks/useBooster';
@@ -70,7 +73,8 @@ function App() {
     setTimeout(() => {
       storeSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       setTimeout(() => {
-        resetBooster(); 
+        resetBooster();
+        clearCardSounds(); 
         setPackClaimed(false);
         setClaimMode(null);
         setShowShippingPrompt(false);
@@ -86,6 +90,7 @@ function App() {
       cardsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
+    clearCardSounds();
     openBooster(selectedEd);
   };
 

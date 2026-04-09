@@ -40,20 +40,18 @@ export const useAudio = () => {
       
       const now = audioCtx.currentTime;
 
-     if (type === 'tick') {
+    if (type === 'tick') {
         osc.type = 'sine';
-        // Subí un poco la base a 600Hz para que sea un 'click' más claro
-        osc.frequency.setValueAtTime(600 + (step * 15), now); 
+        osc.frequency.setValueAtTime(580 + (step * 10), now); 
         
         gainNode.gain.setValueAtTime(0.05, now); 
         
-        // ¡REDUCIDO A 0.01 SEGUNDOS! (10 milisegundos)
-        // Así terminará antes de que la siguiente carta empiece
-        gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.01); 
+        // Lo estiramos a 0.08s para que llene el espacio exacto entre cartas
+        gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.08); 
         
         osc.start(now);
-        osc.stop(now + 0.01); 
-      } else if (type === 'epic') {
+        osc.stop(now + 0.08); 
+      }else if (type === 'epic') {
         osc.type = 'triangle';
         osc.frequency.setValueAtTime(440, now); 
         osc.frequency.exponentialRampToValueAtTime(880, now + 0.5); 
